@@ -679,7 +679,7 @@ define([
                         texture = undefined;
                     }
 
-                    if (!defined(texture)) {
+                    if (!defined(texture) || texture === context.defaultTexture) {
                         texture = new Texture({
                             context : context,
                             source : uniformValue
@@ -689,6 +689,8 @@ define([
                     }
 
                     texture.copyFrom(uniformValue);
+                } else {
+                    material._textures[uniformId] = context.defaultTexture;
                 }
                 return;
             }
