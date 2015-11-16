@@ -689,7 +689,7 @@ define([
                     }
 
                     texture.copyFrom(uniformValue);
-                } else {
+                } else if (!defined(texture)) {
                     material._textures[uniformId] = context.defaultTexture;
                 }
                 return;

@@ -20,9 +20,17 @@ define([
     "use strict";
 
     /**
-     * A {@link MaterialProperty} that maps to image {@link Material} uniforms.
+     * Synchronizes a video element with a simulation clock.
+     *
      * @alias VideoSynchronizer
      * @constructor
+     *
+     * @param {Object} [options] Object with the following properties:
+     * @param {Clock} [options.clock] A Property specifying the Image, URI, or Canvas to use for the billboard.
+     * @param {HTMLVideoElement} [options.element] A boolean Property specifying the visibility of the billboard.
+     * @param {JulianDate} [options.epoch] A numeric Property specifying the scale to apply to the image size.
+     *
+     * @demo {@link http://cesiumjs.org/Cesium/Apps/Sandcastle/index.html?src=Video.html|Video Material Demo}
      */
     var VideoSynchronizer = function(options) {
         options = defaultValue(options, defaultValue.EMPTY_OBJECT);
@@ -34,17 +42,24 @@ define([
 
         this.clock = options.clock;
         this.element = options.element;
+
+        /**
+         * Gets or sets the simulation time that marks the start of the video.
+         * @type {JulianDate}
+         */
         this.epoch = options.epoch;
 
         this._seeking = false;
         this._seekFunction = undefined;
-        this._lastSeek = 0;
+        this._firstTickAfterSeek = false;
     };
 
     defineProperties(VideoSynchronizer.prototype, {
         /**
-         * A string {@link Property} which is the url of the desired video.
-         * @type {Property}
+         * Gets or sets the clock used to drive the video element.
+         *
+         * @memberof VideoSynchronizer.prototype
+         * @type {Clock}
          */
         clock : {
             get : function() {
@@ -69,6 +84,12 @@ define([
                 this._clock = value;
             }
         },
+        /**
+         * Gets or sets the video element to synchronize.
+         *
+         * @memberof VideoSynchronizer.prototype
+         * @type {HTMLVideoElement}
+         */
         element : {
             get : function() {
                 return this._element;
@@ -91,16 +112,28 @@ define([
                 }
 
                 this._element = value;
+                this._seeking = false;
+                this._firstTickAfterSeek = false;
             }
         }
     });
 
+    /**
+     * Destroys and resources used by the object.  Once an object is destroyed, it should not be used.
+     *
+     * @exception {DeveloperError} This object was destroyed, i.e., destroy() was called.
+     */
     VideoSynchronizer.prototype.destroy = function() {
         this.element = undefined;
         this.clock = undefined;
         return destroyObject(this);
     };
 
+    /**
+     * Returns true if this object was destroyed; otherwise, false.
+     *
+     * @returns {Boolean} True if this object was destroyed; otherwise, false.
+     */
     VideoSynchronizer.prototype.isDestroyed = function() {
         return false;
     };
@@ -121,7 +154,13 @@ define([
             }
         }
 
-        if (this._seeking) {
+        //We need to avoid constant seeking or the video will
+        //never contain a complete frame for us to render.
+        //So don't do anything if we're seeing or on the first
+        //tick after a seek (the latter of which allows the frame
+        //to actually be rendered.
+        if (this._seeking || this._firstTickAfterSeek) {
+            this._firstTickAfterSeek = false;
             return;
         }
 
@@ -149,22 +188,12 @@ define([
             desiredTime = videoTime;
         }
 
-        //If the playing video's time and the scene's clock
-        //time ever drift too far apart, we want to set the video
-        //to match
+        //If the playing video's time and the scene's clock time
+        //ever drift too far apart, we want to set the video to match
         var tolerance = shouldAnimate ? 0.15 : 0.001;
 
-        //At certain speeds or when scrubbing the timeline, seeking
-        //takes to long and we end up constantly seeking without
-        //ever actually playing the video, this limits seeks to only
-        //occur every 100 ms.
-        var now = Date.now();
-        var lastSeek = this._lastSeek;
-        var shouldSeek = ((now - lastSeek) > 100);
-
-        if (Math.abs(desiredTime - currentTime) > tolerance && shouldSeek) {
+        if (Math.abs(desiredTime - currentTime) > tolerance) {
             this._seeking = true;
-            this._lastSeek = now;
             element.currentTime = desiredTime;
         }
     };
@@ -172,6 +201,7 @@ define([
     function createSeekFunction(that) {
         return function() {
             that._seeking = false;
+            that._firstTickAfterSeek = true;
         };
     }
 
